@@ -12,7 +12,8 @@ import {
   getAuthenticatedUser,
   clearAuthCookie,
   getGoogleSites,
-  getOverviewForOAuth
+  getOverviewForOAuth,
+  getBingOverview
 } from './lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -64,7 +65,12 @@ const server = http.createServer(async (req, res) => {
 
     if (u.pathname === '/oauth2callback') {
       const stateCookie = cookieValue(req, 'oauth_state');
-      const result = await handleGoogleCallback(u.searchParams.get('code'), u.searchParams.get('state'), stateCookie);
+      const result = await handleGoogleCallback(
+        u.searchParams.get('code'),
+        u.searchParams.get('state'),
+        stateCookie
+      );
+
       return send(res, 302, '', 'text/plain', {
         'location': '/',
         'set-cookie': [
@@ -82,52 +88,150 @@ const server = http.createServer(async (req, res) => {
 
     if (u.pathname === '/api/session') {
       const user = await getAuthenticatedUser(cookieValue(req, 'seo_auth'));
-      return send(res, 200, JSON.stringify({authenticated: !!user, user: user || null}), 'application/json');
+
+      return send(
+        res,
+        200,
+        JSON.stringify({
+          authenticated: !!user,
+          user: user || null
+        }),
+        'application/json'
+      );
     }
 
     if (u.pathname === '/api/sites') {
       const user = await getAuthenticatedUser(cookieValue(req, 'seo_auth'));
-      if (!user) return send(res, 401, JSON.stringify({error:'Google login required'}), 'application/json');
+
+      if (!user) {
+        return send(
+          res,
+          401,
+          JSON.stringify({error:'Google login required'}),
+          'application/json'
+        );
+      }
+
       const sites = await getGoogleSites(user.refreshToken);
-      return send(res, 200, JSON.stringify({sites}), 'application/json');
+
+      return send(
+        res,
+        200,
+        JSON.stringify({sites}),
+        'application/json'
+      );
     }
 
     if (u.pathname === '/api/overview') {
       const site = u.searchParams.get('site') || undefined;
       const user = await getAuthenticatedUser(cookieValue(req, 'seo_auth'));
+
       if (user) {
-        return send(res, 200, JSON.stringify(await getOverviewForOAuth(site, user.refreshToken)), 'application/json');
+        return send(
+          res,
+          200,
+          JSON.stringify(
+            await getOverviewForOAuth(site, user.refreshToken)
+          ),
+          'application/json'
+        );
       }
+
       // Keep old demo/configured-site route available if MOCK_MODE=true.
       if (String(process.env.MOCK_MODE).toLowerCase() === 'true') {
-        return send(res, 200, JSON.stringify(await getOverview(site)), 'application/json');
+        return send(
+          res,
+          200,
+          JSON.stringify(await getOverview(site)),
+          'application/json'
+        );
       }
-      return send(res, 401, JSON.stringify({error:'Google login required'}), 'application/json');
+
+      return send(
+        res,
+        401,
+        JSON.stringify({error:'Google login required'}),
+        'application/json'
+      );
+    }
+
+    // =========================
+    // BING WEBMASTER API
+    // =========================
+    if (u.pathname === '/api/bing') {
+      const site = u.searchParams.get('site') || undefined;
+
+      const d = await getBingOverview(site);
+
+      return send(
+        res,
+        200,
+        JSON.stringify(d),
+        'application/json'
+      );
     }
 
     if (u.pathname === '/api/pagespeed') {
       const selected = u.searchParams.get('url') || process.env.GSC_SITE_URL;
+
       const d = await pageSpeed(selected);
-      return send(res, 200, JSON.stringify(d), 'application/json');
+
+      return send(
+        res,
+        200,
+        JSON.stringify(d),
+        'application/json'
+      );
     }
 
     if (u.pathname === '/api/crawl') {
       const selected = u.searchParams.get('url') || process.env.GSC_SITE_URL;
+
       const d = await crawlSite(selected);
-      return send(res, 200, JSON.stringify(d), 'application/json');
+
+      return send(
+        res,
+        200,
+        JSON.stringify(d),
+        'application/json'
+      );
     }
 
     let p = u.pathname === '/' ? '/index.html' : u.pathname;
+
     p = path.normalize(p).replace(/^([.][.][\\/])+/, '');
+
     const publicRoot = path.join(__dirname, 'public');
     const file = path.join(publicRoot, p);
-    if (!file.startsWith(publicRoot)) return send(res, 403, 'Forbidden');
-    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(res, 404, 'Not found');
-    return send(res, 200, fs.readFileSync(file), mime[path.extname(file)] || 'application/octet-stream');
+
+    if (!file.startsWith(publicRoot)) {
+      return send(res, 403, 'Forbidden');
+    }
+
+    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      return send(res, 404, 'Not found');
+    }
+
+    return send(
+      res,
+      200,
+      fs.readFileSync(file),
+      mime[path.extname(file)] || 'application/octet-stream'
+    );
+
   } catch (e) {
     console.error(e);
-    return send(res, 500, JSON.stringify({error:e.message}), 'application/json');
+
+    return send(
+      res,
+      500,
+      JSON.stringify({error:e.message}),
+      'application/json'
+    );
   }
 });
 
-server.listen(port, () => console.log(`SEO Tracker ready: http://localhost:${port}`));
+server.listen(
+  port,
+  () => console.log(`SEO Tracker ready: http://localhost:${port}`)
+);
