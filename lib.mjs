@@ -879,7 +879,9 @@ export async function getOverviewForOAuth(
  * Refresh token -> Access token -> Bing Webmaster API
  */
 
-async function bingAccessToken(){
+async function bingAccessToken(
+  refreshTokenOverride=null
+){
 
   const clientId=
     process.env.BING_CLIENT_ID;
@@ -887,9 +889,9 @@ async function bingAccessToken(){
   const clientSecret=
     process.env.BING_CLIENT_SECRET;
 
-  const refreshToken=
-    process.env.BING_REFRESH_TOKEN;
-
+const refreshToken=
+  refreshTokenOverride ||
+  process.env.BING_REFRESH_TOKEN;
 
   if(
     !clientId ||
@@ -952,7 +954,8 @@ async function bingAccessToken(){
 ========================================================= */
 
 export async function getBingOverview(
-  siteOverride
+  siteOverride,
+  refreshTokenOverride=null
 ){
 
   const site=
@@ -967,8 +970,10 @@ export async function getBingOverview(
   }
 
 
-  const accessToken=
-    await bingAccessToken();
+const accessToken=
+  await bingAccessToken(
+    refreshTokenOverride
+  );
 
 
   const endpoint=
@@ -1211,7 +1216,10 @@ async function collectGscLive(refreshToken, site){
   };
 }
 
-export async function collectLiveSeoData({refreshToken=null}={}){
+export async function collectLiveSeoData({
+  refreshToken=null,
+  bingRefreshToken=null
+}={}){
   const site=FIXED_SITE;
   const collectedAt=new Date().toISOString();
   const errors=[];
@@ -1228,9 +1236,18 @@ export async function collectLiveSeoData({refreshToken=null}={}){
   let crawlData;
   try{crawlData=await crawlSite(site);}catch(e){crawlData=unavailable(e.message);errors.push(`Crawler: ${e.message}`);}
 
-  let bingData;
-  try{bingData=await getBingOverview(site);}catch(e){bingData=unavailable(e.message);errors.push(`Bing: ${e.message}`);}
+let bingData;
 
+try{
+  bingData=
+    await getBingOverview(
+      site,
+      bingRefreshToken
+    );
+}catch(e){
+  bingData=unavailable(e.message);
+  errors.push(`Bing: ${e.message}`);
+}
   return {
     site:{url:site,domain:hostOf(site),lastUpdated:collectedAt},
     overview: searchConsole?.status==='live' ? {
