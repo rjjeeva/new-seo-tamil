@@ -13,7 +13,9 @@ import {
   clearAuthCookie,
   getGoogleSites,
   getOverviewForOAuth,
-  getBingOverview
+  getBingOverview,
+  collectLiveSeoData,
+  saveLiveSeoJson
 } from './lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,6 +120,40 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         JSON.stringify({sites}),
+        'application/json'
+      );
+    }
+
+    if (u.pathname === '/api/seo-data') {
+      const user = await getAuthenticatedUser(cookieValue(req, 'seo_auth'));
+
+      const data = await collectLiveSeoData({
+        refreshToken: user?.refreshToken || null
+      });
+
+      await saveLiveSeoJson(data);
+
+      return send(
+        res,
+        200,
+        JSON.stringify(data),
+        'application/json'
+      );
+    }
+
+    if (u.pathname === '/api/refresh' && req.method === 'POST') {
+      const user = await getAuthenticatedUser(cookieValue(req, 'seo_auth'));
+
+      const data = await collectLiveSeoData({
+        refreshToken: user?.refreshToken || null
+      });
+
+      await saveLiveSeoJson(data);
+
+      return send(
+        res,
+        200,
+        JSON.stringify(data),
         'application/json'
       );
     }

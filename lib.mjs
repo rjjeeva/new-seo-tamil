@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function envBool(v){ return String(v||'').toLowerCase()==='true'; }
 function dateString(d){ return d.toISOString().slice(0,10); }
@@ -268,7 +271,7 @@ export async function getGoogleSites(refreshToken){
 
   return (data.siteEntry||[])
     .map(x=>({
-      name:new URL(x.siteUrl).hostname.replace(/^www\./,''),
+      name:hostOf(x.siteUrl),
       url:x.siteUrl,
       permissionLevel:x.permissionLevel||''
     }))
@@ -1131,6 +1134,131 @@ export async function getBingOverview(
   };
 }
 
+
+
+/* =========================================================
+   FIXED-SITE LIVE JSON COLLECTOR
+========================================================= */
+
+const LIB_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.join(LIB_DIR, 'data');
+const LIVE_JSON_PATH = path.join(DATA_DIR, 'regionsecurityguarding.json');
+const FIXED_SITE = 'https://regionsecurityguarding.co.uk/';
+
+function unavailable(reason){
+  return {status:'unavailable', reason};
+}
+
+function hostOf(value){
+  const raw=String(value||'').trim();
+  if(raw.toLowerCase().startsWith('sc-domain:')){
+    return raw.slice('sc-domain:'.length).replace(/^www\./,'').toLowerCase();
+  }
+  try{return new URL(raw).hostname.replace(/^www\./,'').toLowerCase();}
+  catch{return '';}
+}
+
+async function resolveFixedGscProperty(refreshToken){
+  if(!refreshToken) return null;
+  const sites=await getGoogleSites(refreshToken);
+  const target=hostOf(FIXED_SITE);
+  const exact=sites.find(s=>s.url===FIXED_SITE);
+  if(exact) return exact.url;
+  const match=sites.find(s=>hostOf(s.url)===target);
+  return match?.url || null;
+}
+
+async function collectGscLive(refreshToken, site){
+  if(!refreshToken) return {status:'unavailable', reason:'Google Search Console login is required.'};
+  if(!site) return {status:'unavailable', reason:'No Search Console property matching regionsecurityguarding.co.uk was found.'};
+
+  const end=new Date();
+  end.setDate(end.getDate()-2);
+  const start=new Date(end);
+  start.setDate(end.getDate()-179);
+  const s=dateString(start), e=dateString(end);
+  const errors=[];
+
+  async function q(dimensions,rowLimit=1000){
+    return gscQueryWithToken(refreshToken,{startDate:s,endDate:e,dimensions,rowLimit,site});
+  }
+
+  let summary=[], trend=[], keywords=[], pages=[], countries=[], searchAppearance=[];
+  try{summary=await q([] ,1);}catch(e){errors.push(`Summary: ${e.message}`);}
+  try{trend=await q(['date'],1000);}catch(e){errors.push(`Trend: ${e.message}`);}
+  try{keywords=await q(['query'],1000);}catch(e){errors.push(`Keywords: ${e.message}`);}
+  try{pages=await q(['page'],1000);}catch(e){errors.push(`Pages: ${e.message}`);}
+  try{countries=await q(['country'],1000);}catch(e){errors.push(`Countries: ${e.message}`);}
+  try{searchAppearance=await q(['searchAppearance'],1000);}catch(e){errors.push(`Search appearance: ${e.message}`);}
+
+  const a=aggregateRows(summary);
+  const countryTotal=countries.reduce((n,r)=>n+(r.impressions||0),0)||1;
+
+  return {
+    status: errors.length && !summary.length ? 'partial' : 'live',
+    property: site,
+    dateRange:{start:s,end:e},
+    clicks:Math.round(a.clicks),
+    impressions:Math.round(a.impressions),
+    ctr:+a.ctr.toFixed(2),
+    averagePosition:+a.position.toFixed(1),
+    trend:trend.map(r=>({date:r.keys?.[0]||'',clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0),ctr:+((r.ctr||0)*100).toFixed(2),position:+(r.position||0).toFixed(1)})),
+    keywords:keywords.map(r=>({query:r.keys?.[0]||'',clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0),ctr:+((r.ctr||0)*100).toFixed(2),position:+(r.position||0).toFixed(1)})),
+    pages:pages.map(r=>({url:r.keys?.[0]||'',clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0),ctr:+((r.ctr||0)*100).toFixed(2),position:+(r.position||0).toFixed(1)})),
+    countries:countries.map(r=>({country:r.keys?.[0]||'',clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0),share:+((r.impressions||0)/countryTotal*100).toFixed(2)})),
+    searchAppearance:searchAppearance.map(r=>({type:r.keys?.[0]||'',clicks:Math.round(r.clicks||0),impressions:Math.round(r.impressions||0),ctr:+((r.ctr||0)*100).toFixed(2),position:+(r.position||0).toFixed(1)})),
+    errors
+  };
+}
+
+export async function collectLiveSeoData({refreshToken=null}={}){
+  const site=FIXED_SITE;
+  const collectedAt=new Date().toISOString();
+  const errors=[];
+
+  let gscProperty=null;
+  try{gscProperty=await resolveFixedGscProperty(refreshToken);}catch(e){errors.push(`GSC property discovery: ${e.message}`);}
+
+  let searchConsole;
+  try{searchConsole=await collectGscLive(refreshToken,gscProperty);}catch(e){searchConsole=unavailable(e.message);errors.push(`GSC: ${e.message}`);}
+
+  let pageSpeedData;
+  try{pageSpeedData=await pageSpeed(site);}catch(e){pageSpeedData=unavailable(e.message);errors.push(`PageSpeed: ${e.message}`);}
+
+  let crawlData;
+  try{crawlData=await crawlSite(site);}catch(e){crawlData=unavailable(e.message);errors.push(`Crawler: ${e.message}`);}
+
+  let bingData;
+  try{bingData=await getBingOverview(site);}catch(e){bingData=unavailable(e.message);errors.push(`Bing: ${e.message}`);}
+
+  return {
+    site:{url:site,domain:hostOf(site),lastUpdated:collectedAt},
+    overview: searchConsole?.status==='live' ? {
+      clicks:searchConsole.clicks,
+      impressions:searchConsole.impressions,
+      ctr:searchConsole.ctr,
+      averagePosition:searchConsole.averagePosition
+    } : unavailable('Google Search Console data is unavailable.'),
+    organicSearch: searchConsole,
+    keywords: searchConsole?.keywords || [],
+    pages: searchConsole?.pages || [],
+    countries: searchConsole?.countries || [],
+    searchAppearance: searchConsole?.searchAppearance || [],
+    technicalSeo: crawlData,
+    pageSpeed: pageSpeedData,
+    bingWebmaster: bingData,
+    backlinks: unavailable('A backlink index provider is required for complete external backlink data.'),
+    ga4: unavailable('Google Analytics Data API is not connected.'),
+    aiVisibility: unavailable('A real AI visibility/search provider is required.'),
+    collectionErrors:errors
+  };
+}
+
+export async function saveLiveSeoJson(data){
+  await fs.mkdir(DATA_DIR,{recursive:true});
+  await fs.writeFile(LIVE_JSON_PATH,JSON.stringify(data,null,2),'utf8');
+  return LIVE_JSON_PATH;
+}
 
 /* =========================================================
    LEGACY CONFIGURED-SITE HELPERS

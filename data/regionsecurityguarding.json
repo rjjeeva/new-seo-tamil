@@ -1,0 +1,61 @@
+{
+  "site": {
+    "url": "https://regionsecurityguarding.co.uk/",
+    "domain": "regionsecurityguarding.co.uk",
+    "lastUpdated": "2026-09-19T07:32:18.176Z"
+  },
+  "overview": {
+    "status": "unavailable",
+    "reason": "Google Search Console data is unavailable."
+  },
+  "organicSearch": {
+    "status": "unavailable",
+    "reason": "Google Search Console login is required."
+  },
+  "keywords": [],
+  "pages": [],
+  "countries": [],
+  "searchAppearance": [],
+  "technicalSeo": {
+    "robots": true,
+    "sitemap": true,
+    "https": true,
+    "title": true,
+    "description": true,
+    "h1": 1,
+    "canonical": true,
+    "images": 50,
+    "imagesMissingAlt": 1,
+    "status": 200,
+    "health": 89
+  },
+  "pageSpeed": {
+    "performance": 45,
+    "seo": 100,
+    "accessibility": 89,
+    "bestPractices": 92,
+    "fcp": "5.1 s",
+    "lcp": "20.6 s",
+    "cls": "0",
+    "tbt": "490 ms"
+  },
+  "bingWebmaster": {
+    "status": "unavailable",
+    "reason": "BING_CLIENT_ID / BING_CLIENT_SECRET / BING_REFRESH_TOKEN is missing in .env"
+  },
+  "backlinks": {
+    "status": "unavailable",
+    "reason": "A backlink index provider is required for complete external backlink data."
+  },
+  "ga4": {
+    "status": "unavailable",
+    "reason": "Google Analytics Data API is not connected."
+  },
+  "aiVisibility": {
+    "status": "unavailable",
+    "reason": "A real AI visibility/search provider is required."
+  },
+  "collectionErrors": [
+    "Bing: BING_CLIENT_ID / BING_CLIENT_SECRET / BING_REFRESH_TOKEN is missing in .env"
+  ]
+}

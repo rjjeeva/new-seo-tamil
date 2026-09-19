@@ -1,0 +1,18 @@
+{
+  "site": {
+    "url": "string",
+    "domain": "string",
+    "lastUpdated": "ISO-8601"
+  },
+  "overview": "object",
+  "organicSearch": "object",
+  "keywords": "array",
+  "pages": "array",
+  "countries": "array",
+  "searchAppearance": "array",
+  "technicalSeo": "object",
+  "pageSpeed": "object",
+  "backlinks": "object",
+  "ga4": "object",
+  "aiVisibility": "object"
+}
